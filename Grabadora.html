@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grabador de Audio y Transcriptor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center">
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">Grabadora de Audio y Transcriptor</h1>
+
+        <div id="status-message" class="text-sm font-medium text-center text-gray-500 mb-4 h-6">Listo para grabar.</div>
+
+        <div id="transcription-container" class="w-full bg-gray-100 rounded-xl p-4 mb-6 shadow-inner h-64 overflow-y-auto border border-gray-200">
+            <p id="transcription-output" class="text-gray-700 leading-relaxed"></p>
+        </div>
+        
+        <div class="flex space-x-4 w-full">
+            <button id="start-btn" class="flex-1 py-3 px-6 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-full shadow-lg transition-all duration-200 transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-emerald-300">
+                Iniciar Grabación
+            </button>
+            <button id="stop-btn" class="flex-1 py-3 px-6 bg-red-500 hover:bg-red-600 text-white font-bold rounded-full shadow-lg transition-all duration-200 transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-red-300 hidden">
+                Detener Grabación
+            </button>
+        </div>
+
+        <button id="download-btn" class="mt-4 w-full py-3 px-6 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-full shadow-lg transition-all duration-200 transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-blue-300 hidden">
+            Descargar Transcripción
+        </button>
+
+        <div id="error-message" class="mt-4 text-red-500 text-center font-medium hidden"></div>
+
+    </div>
+
+    <script>
+        // Declaración de variables globales
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const transcriptionOutput = document.getElementById('transcription-output');
+        const statusMessage = document.getElementById('status-message');
+        const errorMessage = document.getElementById('error-message');
+
+        // Verificar la compatibilidad del navegador con la API de Web Speech
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        let finalTranscription = '';
+
+        // Función para actualizar el estado de la UI
+        const updateUIState = (isRecording) => {
+            if (isRecording) {
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                downloadBtn.classList.add('hidden');
+            } else {
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                if (finalTranscription.trim() !== '') {
+                    downloadBtn.classList.remove('hidden');
+                } else {
+                    downloadBtn.classList.add('hidden');
+                }
+            }
+        };
+
+        // Evento para el botón de inicio
+        startBtn.addEventListener('click', () => {
+            if (!SpeechRecognition) {
+                errorMessage.textContent = 'Tu navegador no soporta la API de Web Speech. Intenta con Chrome o Edge.';
+                errorMessage.classList.remove('hidden');
+                return;
+            }
+
+            // Ocultar mensajes de error anteriores
+            errorMessage.classList.add('hidden');
+            finalTranscription = '';
+            transcriptionOutput.textContent = '';
+            statusMessage.textContent = 'Iniciando grabación...';
+            updateUIState(true);
+
+            // Crear una nueva instancia de reconocimiento de voz
+            recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES'; // Establecer el idioma a español
+            recognition.interimResults = true; // Permitir resultados interinos para la transcripción en tiempo real
+            recognition.continuous = true; // Mantener la escucha continua
+
+            // Evento para cuando se detecta un resultado
+            recognition.onresult = (event) => {
+                let interimTranscription = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscription += transcript + ' ';
+                    } else {
+                        interimTranscription += transcript;
+                    }
+                }
+                transcriptionOutput.textContent = finalTranscription + interimTranscription;
+            };
+
+            // Evento para cuando el reconocimiento finaliza
+            recognition.onend = () => {
+                if (stopBtn.classList.contains('hidden')) { // Si el usuario no ha pulsado detener
+                    statusMessage.textContent = 'La grabación se ha detenido. Pulsa "Iniciar" para continuar.';
+                }
+            };
+
+            // Evento para manejar errores
+            recognition.onerror = (event) => {
+                statusMessage.textContent = 'Ocurrió un error. Por favor, inténtalo de nuevo.';
+                if (event.error === 'not-allowed') {
+                    errorMessage.textContent = 'Acceso al micrófono denegado. Por favor, habilite el permiso en la configuración de su navegador para esta página.';
+                } else {
+                    errorMessage.textContent = `Error: ${event.error}`;
+                }
+                errorMessage.classList.remove('hidden');
+                updateUIState(false);
+            };
+
+            try {
+                recognition.start();
+                statusMessage.textContent = 'Grabando... Habla ahora.';
+            } catch (e) {
+                statusMessage.textContent = 'No se pudo iniciar la grabación. Por favor, inténtalo de nuevo.';
+                errorMessage.textContent = `Error al iniciar: ${e.message}`;
+                errorMessage.classList.remove('hidden');
+                updateUIState(false);
+            }
+        });
+
+        // Evento para el botón de detener
+        stopBtn.addEventListener('click', () => {
+            if (recognition) {
+                recognition.stop();
+                statusMessage.textContent = 'Grabación finalizada.';
+                updateUIState(false);
+            }
+        });
+
+        // Evento para el botón de descarga
+        downloadBtn.addEventListener('click', () => {
+            if (finalTranscription.trim() === '') {
+                alert('No hay transcripción para descargar.');
+                return;
+            }
+
+            const blob = new Blob([finalTranscription], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'transcripcion.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    </script>
+</body>
+</html>
